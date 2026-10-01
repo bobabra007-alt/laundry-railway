@@ -1,0 +1,11 @@
+import 'dotenv/config';
+import { spawn, spawnSync } from 'node:child_process';
+const port = process.env.PORT || '3000';
+if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) throw new Error('Некорректный PORT');
+const prepared = spawnSync(process.execPath, ['scripts/prepare-db.mjs'], { stdio: 'inherit', shell: false });
+if (prepared.error) throw prepared.error;
+if (prepared.status !== 0) process.exit(prepared.status ?? 1);
+const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '0.0.0.0', '--port', port], { stdio: 'inherit', shell: false });
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => server.kill(signal));
+server.on('error', error => { console.error(error); process.exit(1); });
+server.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));

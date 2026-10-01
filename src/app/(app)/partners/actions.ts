@@ -1,0 +1,2 @@
+'use server'; import { prisma } from '@/lib/db'; import { currentUser,can } from '@/lib/access'; import { revalidatePath } from 'next/cache';
+export async function addPartner(fd:FormData){const u=await currentUser();if(!can(u,'partners.manage')) throw new Error('Нет прав');await prisma.partner.create({data:{name:String(fd.get('name')),tgUsername:String(fd.get('tgUsername')||'')||null,notes:String(fd.get('notes')||'')||null}});revalidatePath('/partners')}

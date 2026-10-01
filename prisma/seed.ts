@@ -1,0 +1,11 @@
+import 'dotenv/config';
+import bcrypt from 'bcryptjs';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../generated/prisma/client';
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) });
+const password = process.env.ADMIN_PASSWORD;
+if (!password || password.length < 12 || new TextEncoder().encode(password).length > 72) throw new Error('Set ADMIN_PASSWORD: at least 12 characters, at most 72 UTF-8 bytes');
+const passwordHash = await bcrypt.hash(password, 12);
+await prisma.user.upsert({ where:{username:'admin'}, update:{}, create:{ username:'admin', displayName:'Admin', passwordHash, role:'SUPER_ADMIN' } });
+console.log('Admin created (existing account preserved).');
+await prisma.$disconnect();

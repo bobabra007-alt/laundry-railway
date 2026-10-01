@@ -1,0 +1,273 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  USER
+}
+enum ClientStatus {
+  NEW
+  ACTIVE
+  VIP
+  ARCHIVED
+}
+enum DealStatus {
+  NEW
+  IN_PROGRESS
+  PENDING
+  COMPLETED
+  CANCELLED
+  DISPUTE
+}
+enum PaymentDirection {
+  PARTNER_TO_US
+  US_TO_CLIENT
+}
+enum EntityType {
+  CLIENT
+  DEAL
+  COMMENT
+}
+enum BankType {
+  COMPANY
+  EMPLOYEES
+}
+enum LedgerKind {
+  DEAL_ACCRUAL
+  PAYOUT
+  ADJUSTMENT
+  EXPENSE
+}
+enum PayoutStatus {
+  OPEN
+  CONFIRMED
+  PARTIAL
+  UNPAID
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  displayName  String
+  passwordHash String
+  role         UserRole @default(USER)
+  isActive     Boolean  @default(true)
+  participatesInEmployeeBank Boolean @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  permissions UserPermission[]
+  preference  UserPreference?
+  clients     Client[] @relation("ClientAssignee")
+  createdClients Client[] @relation("ClientCreator")
+  assignedDeals Deal[] @relation("DealAssignee")
+  createdDeals Deal[] @relation("DealCreator")
+  payments    DealPayment[]
+  comments    Comment[]
+  uploads     Attachment[]
+  audits      AuditLog[]
+  employeeLedger EmployeeLedgerEntry[]
+  payoutPeriods EmployeePayoutPeriod[]
+}
+
+model UserPermission {
+  id         String @id @default(cuid())
+  userId     String
+  key        String
+  enabled    Boolean @default(true)
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, key])
+}
+
+model UserPreference {
+  userId          String  @id
+  lastPartnerRate Decimal @default(90.00) @db.Decimal(6,2)
+  lastClientRate  Decimal @default(85.00) @db.Decimal(6,2)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Client {
+  id          String @id @default(cuid())
+  name        String
+  tgUsername  String?
+  source      String?
+  tags        String[] @default([])
+  status      ClientStatus @default(NEW)
+  assignedTo  String
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assignee User @relation("ClientAssignee", fields: [assignedTo], references: [id])
+  creator  User @relation("ClientCreator", fields: [createdBy], references: [id])
+  deals Deal[]
+  assignments ClientAssignmentHistory[]
+  comments Comment[] @relation("ClientComments")
+}
+
+model ClientAssignmentHistory {
+  id String @id @default(cuid())
+  clientId String
+  fromUserId String?
+  toUserId String
+  changedBy String
+  changedAt DateTime @default(now())
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model Partner {
+  id String @id @default(cuid())
+  name String
+  tgUsername String?
+  notes String?
+  archived Boolean @default(false)
+  createdAt DateTime @default(now())
+  deals Deal[]
+}
+
+model Deal {
+  id String @id @default(cuid())
+  title String
+  clientId String
+  partnerId String?
+  assignedTo String
+  createdBy String
+  amount Decimal @db.Decimal(18,2)
+  partnerRate Decimal @db.Decimal(6,2)
+  clientRate Decimal @db.Decimal(6,2)
+  partnerAmount Decimal @db.Decimal(18,2)
+  clientAmount Decimal @db.Decimal(18,2)
+  fee Decimal @db.Decimal(18,2)
+  companyPercent Decimal @default(75.00) @db.Decimal(5,2)
+  employeesPercent Decimal @default(25.00) @db.Decimal(5,2)
+  employeeCount Int @default(4)
+  companyShare Decimal @db.Decimal(18,2)
+  employeesShare Decimal @db.Decimal(18,2)
+  perEmployeeShare Decimal @db.Decimal(18,2)
+  status DealStatus @default(NEW)
+  openedAt DateTime @default(now())
+  closedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id])
+  partner Partner? @relation(fields: [partnerId], references: [id])
+  assignee User @relation("DealAssignee", fields: [assignedTo], references: [id])
+  creator User @relation("DealCreator", fields: [createdBy], references: [id])
+  payments DealPayment[]
+  comments Comment[] @relation("DealComments")
+  companyLedger BankLedgerEntry[]
+  employeeLedger EmployeeLedgerEntry[]
+}
+
+model DealPayment {
+  id String @id @default(cuid())
+  dealId String
+  direction PaymentDirection
+  amount Decimal @db.Decimal(18,2)
+  paidAt DateTime @default(now())
+  note String?
+  createdBy String
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [createdBy], references: [id])
+}
+
+model Comment {
+  id String @id @default(cuid())
+  entityType EntityType
+  clientId String?
+  dealId String?
+  authorId String
+  text String
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client? @relation("ClientComments", fields: [clientId], references: [id], onDelete: Cascade)
+  deal Deal? @relation("DealComments", fields: [dealId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+  revisions CommentRevision[]
+}
+
+model CommentRevision {
+  id String @id @default(cuid())
+  commentId String
+  text String
+  editedBy String
+  editedAt DateTime @default(now())
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+}
+
+model Attachment {
+  id String @id @default(cuid())
+  entityType EntityType
+  entityId String
+  filename String
+  mime String
+  size Int
+  url String
+  data Bytes? @db.ByteA
+  uploadedBy String
+  createdAt DateTime @default(now())
+  user User @relation(fields: [uploadedBy], references: [id])
+}
+
+model BankLedgerEntry {
+  id String @id @default(cuid())
+  bank BankType
+  kind LedgerKind
+  amount Decimal @db.Decimal(18,2)
+  dealId String?
+  note String?
+  createdAt DateTime @default(now())
+  deal Deal? @relation(fields: [dealId], references: [id])
+}
+
+model EmployeeLedgerEntry {
+  id String @id @default(cuid())
+  userId String
+  kind LedgerKind
+  amount Decimal @db.Decimal(18,2)
+  dealId String?
+  payoutPeriodId String?
+  note String?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deal Deal? @relation(fields: [dealId], references: [id])
+  payoutPeriod EmployeePayoutPeriod? @relation(fields: [payoutPeriodId], references: [id])
+}
+
+model EmployeePayoutPeriod {
+  id String @id @default(cuid())
+  userId String
+  periodStart DateTime
+  periodEnd DateTime
+  dueDate DateTime
+  amountDue Decimal @db.Decimal(18,2)
+  amountConfirmed Decimal @default(0) @db.Decimal(18,2)
+  carriedForward Decimal @default(0) @db.Decimal(18,2)
+  status PayoutStatus @default(OPEN)
+  confirmedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ledgerEntries EmployeeLedgerEntry[]
+  @@unique([userId, periodStart, periodEnd])
+}
+
+model AuditLog {
+  id String @id @default(cuid())
+  userId String
+  action String
+  entity String
+  entityId String
+  payload Json?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id])
+}
