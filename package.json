@@ -6,12 +6,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
-    "start": "next start",
+    "start": "node scripts/start.mjs",
     "lint": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:prepare": "node scripts/prepare-db.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
@@ -23,16 +24,16 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zod": "^4.1.12",
-    "@prisma/client": "^7.10.0"
+    "@prisma/client": "^7.10.0",
+    "prisma": "^7.10.0",
+    "tsx": "^4.20.6",
+    "dotenv": "^17.2.3"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/pg": "^8.15.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "dotenv": "^17.2.3",
-    "prisma": "^7.10.0",
-    "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   },
   "engines": {
