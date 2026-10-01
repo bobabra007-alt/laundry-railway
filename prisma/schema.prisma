@@ -74,6 +74,8 @@ model User {
   audits      AuditLog[]
   employeeLedger EmployeeLedgerEntry[]
   payoutPeriods EmployeePayoutPeriod[]
+  allocations DealAllocation[]
+  regulations Regulation[]
 }
 
 model UserPermission {
@@ -151,6 +153,10 @@ model Deal {
   employeesShare Decimal @db.Decimal(18,2)
   perEmployeeShare Decimal @db.Decimal(18,2)
   status DealStatus @default(NEW)
+  posted Boolean @default(false)
+  allocationVersion Int @default(0)
+  deletedAt DateTime?
+  deletedBy String?
   openedAt DateTime @default(now())
   closedAt DateTime?
   createdAt DateTime @default(now())
@@ -164,6 +170,7 @@ model Deal {
   comments Comment[] @relation("DealComments")
   companyLedger BankLedgerEntry[]
   employeeLedger EmployeeLedgerEntry[]
+  allocations DealAllocation[]
 }
 
 model DealPayment {
@@ -270,4 +277,39 @@ model AuditLog {
   payload Json?
   createdAt DateTime @default(now())
   user User @relation(fields: [userId], references: [id])
+}
+
+model DealAllocation {
+  id String @id @default(cuid())
+  dealId String
+  slot Int
+  userId String?
+  amount Decimal @db.Decimal(18,2)
+  deal Deal @relation(fields: [dealId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
+  @@unique([dealId, slot])
+  @@unique([dealId, userId])
+  @@index([userId])
+}
+model Regulation {
+  id String @id @default(cuid())
+  title String
+  summary String
+  body String
+  authorId String
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  author User @relation(fields: [authorId], references: [id])
+  revisions RegulationRevision[]
+}
+model RegulationRevision {
+  id String @id @default(cuid())
+  regulationId String
+  title String
+  summary String
+  body String
+  editedBy String
+  createdAt DateTime @default(now())
+  regulation Regulation @relation(fields: [regulationId], references: [id])
 }

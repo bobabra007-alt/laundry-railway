@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     if (file.size > 2 * 1024 * 1024) return NextResponse.json({ error: 'Максимум 2 МБ' }, { status: 413 });
     const entity = entityType === 'CLIENT'
       ? await prisma.client.findUnique({ where: { id: entityId }, select: { assignedTo: true } })
-      : await prisma.deal.findUnique({ where: { id: entityId }, select: { assignedTo: true } });
+      : await prisma.deal.findFirst({ where: { id: entityId, deletedAt: null }, select: { assignedTo: true } });
     if (!entity) return NextResponse.json({ error: 'Карточка не найдена' }, { status: 404 });
     const prefix = entityType === 'CLIENT' ? 'clients' : 'deals';
     if (!can(user, `${prefix}.edit_any`) && !(entity.assignedTo === userId && can(user, `${prefix}.edit_own`))) return NextResponse.json({ error: 'Нет права редактирования карточки' }, { status: 403 });
