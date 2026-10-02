@@ -1,2 +1,7 @@
-import Link from 'next/link'; import { currentUser } from '@/lib/access'; import { signOut } from '@/auth';
-export default async function AppLayout({children}:{children:React.ReactNode}){const u=await currentUser();return <div className="shell"><aside className="side"><div className="brand">Laund<span>ra</span></div><nav className="nav"><Link href="/">Дашборд</Link><Link href="/deals">Сделки</Link><Link href="/clients">Клиенты</Link><Link href="/partners">Партнёры</Link><Link href="/payouts">Выплаты</Link><Link href="/profile">Мой профиль</Link><Link href="/regulations">Регламенты</Link>{u.role==='SUPER_ADMIN'&&<><Link href="/admin/users">Пользователи</Link><Link href="/admin/audit">История</Link></>}</nav><div className="side-footer"><div className="sub">{u.displayName}</div><form action={async()=>{'use server';await signOut({redirectTo:'/login'})}}><button className="btn" style={{width:'100%',marginTop:8}}>Выйти</button></form></div></aside><main className="main">{children}</main></div>}
+import {currentUser} from '@/lib/access';
+import {signOut} from '@/auth';
+import Navigation from '@/components/Navigation';
+export default async function AppLayout({children}:{children:React.ReactNode}){
+ const u=await currentUser();
+ return <div className="shell"><Navigation admin={u.role==='SUPER_ADMIN'} footer={<><div className="sub">{u.displayName}</div><form action={async()=>{'use server';await signOut({redirectTo:'/login'})}}><button className="btn" style={{width:'100%',marginTop:8}}>Выйти</button></form></>}/><main className="main">{children}</main></div>;
+}

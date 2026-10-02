@@ -76,6 +76,8 @@ model User {
   payoutPeriods EmployeePayoutPeriod[]
   allocations DealAllocation[]
   regulations Regulation[]
+  expenses Expense[]
+  expenseAllocations ExpenseAllocation[]
 }
 
 model UserPermission {
@@ -129,6 +131,7 @@ model Partner {
   tgUsername String?
   notes String?
   archived Boolean @default(false)
+  updatedAt DateTime @updatedAt @default(now())
   createdAt DateTime @default(now())
   deals Deal[]
 }
@@ -231,9 +234,12 @@ model BankLedgerEntry {
   kind LedgerKind
   amount Decimal @db.Decimal(18,2)
   dealId String?
+  expenseId String?
+  expense Expense? @relation(fields: [expenseId], references: [id])
   note String?
   createdAt DateTime @default(now())
   deal Deal? @relation(fields: [dealId], references: [id])
+  @@index([expenseId])
 }
 
 model EmployeeLedgerEntry {
@@ -242,12 +248,15 @@ model EmployeeLedgerEntry {
   kind LedgerKind
   amount Decimal @db.Decimal(18,2)
   dealId String?
+  expenseId String?
+  expense Expense? @relation(fields: [expenseId], references: [id])
   payoutPeriodId String?
   note String?
   createdAt DateTime @default(now())
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   deal Deal? @relation(fields: [dealId], references: [id])
   payoutPeriod EmployeePayoutPeriod? @relation(fields: [payoutPeriodId], references: [id])
+  @@index([expenseId])
 }
 
 model EmployeePayoutPeriod {
@@ -312,4 +321,32 @@ model RegulationRevision {
   editedBy String
   createdAt DateTime @default(now())
   regulation Regulation @relation(fields: [regulationId], references: [id])
+}
+
+model Expense {
+  id String @id @default(cuid())
+  requestId String @unique
+  spentOn DateTime @db.Date
+  description String
+  amount Decimal @db.Decimal(18,2)
+  authorId String
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  author User @relation(fields: [authorId], references: [id])
+  allocations ExpenseAllocation[]
+  bankLedger BankLedgerEntry[]
+  employeeLedger EmployeeLedgerEntry[]
+}
+model ExpenseAllocation {
+  id String @id @default(cuid())
+  expenseId String
+  slot Int
+  userId String?
+  amount Decimal @db.Decimal(18,2)
+  expense Expense @relation(fields: [expenseId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
+  @@unique([expenseId, slot])
+  @@unique([expenseId, userId])
+  @@index([userId])
 }

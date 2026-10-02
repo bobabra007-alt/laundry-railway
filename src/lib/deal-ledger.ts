@@ -1,5 +1,6 @@
 import { Prisma } from '../../generated/prisma/client';
 import { prisma } from './db';
+import { assignReservedExpenseShares } from './expense-ledger';
 import { round2, splitEmployeeShare } from './money';
 type Tx = Prisma.TransactionClient;
 
@@ -66,4 +67,5 @@ export async function assignReservedShares(actorId: string) {
     }
     if(changed)await reconcileDeal(tx,row.id,deal.posted,actorId,'Назначение сохранённой доли сотруднику');
   });
+  await assignReservedExpenseShares(actorId);
 }

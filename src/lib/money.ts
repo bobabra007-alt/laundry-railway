@@ -19,3 +19,8 @@ export function inputNumber(value: FormDataEntryValue | null) {
   if (!Number.isFinite(n)) throw new Error('Введите корректное число');
   return n;
 }
+
+export function calcExpense(amount:number) {
+  const companyShare=round2(amount*.75), employeesShare=round2(amount-companyShare);
+  return {companyShare, employeesShare, allocations:splitEmployeeShare(employeesShare)};
+}
