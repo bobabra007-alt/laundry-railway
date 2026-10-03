@@ -1,0 +1,2 @@
+ 'use client';
+export default function ErrorPage({reset}:{error:Error;reset:()=>void}){return <div className="empty-state card"><span className="empty-symbol">!</span><h1 className="title">Не удалось загрузить страницу</h1><p className="sub">Повторите попытку. Если ошибка сохранится, сообщите администратору.</p><button className="btn primary" onClick={reset}>Попробовать снова</button><a className="btn" href="/">На главную</a></div>;}

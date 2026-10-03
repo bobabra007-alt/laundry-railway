@@ -1,6 +1,12 @@
 'use server'; import { prisma } from '@/lib/db'; import { currentUser,can } from '@/lib/access'; import { revalidatePath } from 'next/cache';
-export async function addPartner(fd:FormData){const u=await currentUser();if(!can(u,'partners.manage')) throw new Error('Нет прав');await prisma.partner.create({data:{name:String(fd.get('name')),tgUsername:String(fd.get('tgUsername')||'')||null,notes:String(fd.get('notes')||'')||null}});revalidatePath('/partners')}
-
+export async function addPartner(_: {error?:string;success?:string},fd:FormData):Promise<{error?:string;success?:string}>{
+ const u=await currentUser();if(!can(u,'partners.manage'))return {error:'Нет прав'};
+ try{const name=String(fd.get('name')??'').trim(),tgUsername=String(fd.get('tgUsername')??'').trim(),notes=String(fd.get('notes')??'').trim();
+ if(!name||name.length>200||tgUsername.length>200||notes.length>10000)throw new Error('Проверьте название и длину полей');
+ await prisma.$transaction(async tx=>{const partner=await tx.partner.create({data:{name,tgUsername:tgUsername||null,notes:notes||null}});await tx.auditLog.create({data:{userId:u.id,action:'CREATE',entity:'partner',entityId:partner.id}});});
+ revalidatePath('/partners');revalidatePath('/deals/new');return {success:'Партнёр добавлен'};
+ }catch(e){return {error:e instanceof Error?e.message:'Не удалось добавить партнёра'};}
+}
 export async function updatePartner(_: {error?:string;success?:string},fd:FormData):Promise<{error?:string;success?:string}> {
  const u=await currentUser();
  try{

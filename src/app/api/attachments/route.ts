@@ -12,7 +12,8 @@ export async function POST(req: Request) {
   const userId = (session?.user as { id?: string } | undefined)?.id;
   if (!userId) return NextResponse.json({ error: 'Войдите в систему' }, { status: 401 });
   const user = await prisma.user.findUnique({ where: { id: userId }, include: { permissions: true } });
-  if (!user?.isActive) return NextResponse.json({ error: 'Нет доступа' }, { status: 403 });
+  if (!user?.isActive || ((session?.user as any)?.version??0)!==user.sessionVersion) return NextResponse.json({ error: 'Нет доступа' }, { status: 403 });
+  if(user.isReadOnly)return NextResponse.json({error:'Аккаунт только для просмотра'},{status:403});
   const contentLength = Number(req.headers.get('content-length') || '0');
   if (contentLength > 2 * 1024 * 1024 + 65536) return NextResponse.json({ error: 'Максимум 2 МБ' }, { status: 413 });
   try {

@@ -1,0 +1,1 @@
+export default function NotFound(){return <main className="login"><div className="loginbox stack"><h1 className="title">Страница не найдена</h1><p className="sub">Проверьте ссылку или вернитесь в рабочее пространство.</p><a className="btn primary" href="/">Открыть Laundra</a></div></main>;}

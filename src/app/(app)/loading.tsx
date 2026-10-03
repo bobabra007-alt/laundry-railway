@@ -1,0 +1,1 @@
+export default function Loading(){return <div className="stack" aria-label="Загрузка данных" role="status"><div className="skeleton" style={{height:90}}/><div className="grid cards">{[1,2,3,4].map(x=><div className="skeleton" key={x} style={{height:130}}/>)}</div><div className="skeleton" style={{height:280}}/><span className="sub">Загружаем данные…</span></div>;}

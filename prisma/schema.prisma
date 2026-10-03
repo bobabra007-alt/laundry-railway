@@ -58,6 +58,8 @@ model User {
   passwordHash String
   role         UserRole @default(USER)
   isActive     Boolean  @default(true)
+  isReadOnly Boolean @default(false)
+  sessionVersion Int @default(0)
   participatesInEmployeeBank Boolean @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -160,6 +162,10 @@ model Deal {
   allocationVersion Int @default(0)
   deletedAt DateTime?
   deletedBy String?
+  dealDate DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Yekaterinburg')::date")) @db.Date
+  dueOn DateTime? @db.Date
+  expectedPaymentOn DateTime? @db.Date
+  waitingReason String?
   openedAt DateTime @default(now())
   closedAt DateTime?
   createdAt DateTime @default(now())
@@ -174,6 +180,9 @@ model Deal {
   companyLedger BankLedgerEntry[]
   employeeLedger EmployeeLedgerEntry[]
   allocations DealAllocation[]
+  expenses Expense[]
+  @@index([dealDate])
+  @@index([closedAt])
 }
 
 model DealPayment {
@@ -327,6 +336,9 @@ model Expense {
   id String @id @default(cuid())
   requestId String @unique
   spentOn DateTime @db.Date
+  category String @default("OTHER")
+  dealId String?
+  deal Deal? @relation(fields: [dealId], references: [id])
   description String
   amount Decimal @db.Decimal(18,2)
   authorId String
@@ -337,6 +349,8 @@ model Expense {
   allocations ExpenseAllocation[]
   bankLedger BankLedgerEntry[]
   employeeLedger EmployeeLedgerEntry[]
+  @@index([spentOn])
+  @@index([dealId])
 }
 model ExpenseAllocation {
   id String @id @default(cuid())
@@ -349,4 +363,10 @@ model ExpenseAllocation {
   @@unique([expenseId, slot])
   @@unique([expenseId, userId])
   @@index([userId])
+}
+
+model LoginAttempt {
+  key String @id
+  windowStart DateTime @default(now())
+  attempts Int @default(0)
 }

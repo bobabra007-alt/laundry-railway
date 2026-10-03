@@ -1,8 +1,28 @@
 'use server';
 import { revalidatePath } from 'next/cache'; import { prisma } from '@/lib/db'; import { currentUser, can } from '@/lib/access'; import { audit } from '@/lib/audit';
-export async function createClient(fd:FormData){const u=await currentUser();if(!can(u,'clients.create')) throw new Error('Нет прав');const c=await prisma.client.create({data:{name:String(fd.get('name')),tgUsername:String(fd.get('tgUsername')||'')||null,source:String(fd.get('source')||'')||null,tags:String(fd.get('tags')||'').split(',').map(x=>x.trim()).filter(Boolean),assignedTo:String(fd.get('assignedTo')),createdBy:u.id}});await prisma.clientAssignmentHistory.create({data:{clientId:c.id,toUserId:c.assignedTo,changedBy:u.id}});await audit(u.id,'CREATE','client',c.id);revalidatePath('/clients')}
-export async function reassignClient(fd:FormData){const u=await currentUser();if(!can(u,'clients.reassign')) throw new Error('Нет прав');const id=String(fd.get('id'));const to=String(fd.get('assignedTo'));const old=await prisma.client.findUniqueOrThrow({where:{id}});await prisma.client.update({where:{id},data:{assignedTo:to}});await prisma.clientAssignmentHistory.create({data:{clientId:id,fromUserId:old.assignedTo,toUserId:to,changedBy:u.id}});await audit(u.id,'REASSIGN','client',id,{from:old.assignedTo,to});revalidatePath('/clients')}
-
+export async function createClient(_: {error?:string;success?:string},fd:FormData):Promise<{error?:string;success?:string}> {
+ const u=await currentUser();if(!can(u,'clients.create'))return {error:'Нет права создавать клиентов'};
+ try{const name=String(fd.get('name')??'').trim(),tgUsername=String(fd.get('tgUsername')??'').trim(),source=String(fd.get('source')??'').trim(),tags=String(fd.get('tags')??'');
+ if(!name||name.length>200||tgUsername.length>200||source.length>500||tags.length>1000)throw new Error('Проверьте имя и длину полей');
+ const assignedTo=can(u,'clients.reassign')?String(fd.get('assignedTo')||u.id):u.id;
+ await prisma.$transaction(async tx=>{
+  if(!(await tx.user.findFirst({where:{id:assignedTo,isActive:true}})))throw new Error('Выберите активного ответственного');
+  const c=await tx.client.create({data:{name,tgUsername:tgUsername||null,source:source||null,tags:[...new Set(tags.split(',').map(x=>x.trim()).filter(Boolean))],assignedTo,createdBy:u.id}});
+  await tx.clientAssignmentHistory.create({data:{clientId:c.id,toUserId:assignedTo,changedBy:u.id}});
+  await tx.auditLog.create({data:{userId:u.id,action:'CREATE',entity:'client',entityId:c.id}});
+ });revalidatePath('/clients');revalidatePath('/deals/new');return {success:'Клиент добавлен'};
+ }catch(e){return {error:e instanceof Error?e.message:'Не удалось создать клиента'};}
+}
+export async function reassignClient(fd:FormData){
+ const u=await currentUser();if(!can(u,'clients.reassign'))throw new Error('Нет прав');const id=String(fd.get('id')),to=String(fd.get('assignedTo'));
+ await prisma.$transaction(async tx=>{
+  await tx.$queryRaw`SELECT "id" FROM "Client" WHERE "id"=${id} FOR UPDATE`;
+  const old=await tx.client.findUniqueOrThrow({where:{id}});if(old.assignedTo===to)return;
+  if(!(await tx.user.findFirst({where:{id:to,isActive:true}})))throw new Error('Выберите активного ответственного');
+  await tx.client.update({where:{id},data:{assignedTo:to}});await tx.clientAssignmentHistory.create({data:{clientId:id,fromUserId:old.assignedTo,toUserId:to,changedBy:u.id}});
+  await tx.auditLog.create({data:{userId:u.id,action:'REASSIGN',entity:'client',entityId:id,payload:{from:old.assignedTo,to}}});
+ });revalidatePath('/clients');revalidatePath(`/clients/${id}`);revalidatePath('/deals/new');
+}
 export async function updateClient(_: {error?:string;success?:string},fd:FormData):Promise<{error?:string;success?:string}> {
  const u=await currentUser();
  try {

@@ -1,8 +1,8 @@
 'use server';
-import { currentUser } from '@/lib/access';import { inputNumber,round2 } from '@/lib/money';import { dealTransaction } from '@/lib/deal-ledger';import { revalidatePath } from 'next/cache';
+import { currentUser,requireWritable } from '@/lib/access';import { inputNumber,round2 } from '@/lib/money';import { dealTransaction } from '@/lib/deal-ledger';import { revalidatePath } from 'next/cache';
 export async function confirmPayout(fd:FormData){
  const u=await currentUser(),id=String(fd.get('periodId')),received=inputNumber(fd.get('received'));
- if(received<0)throw new Error('Полученная сумма не может быть отрицательной');
+ requireWritable(u);if(received<0)throw new Error('Полученная сумма не может быть отрицательной');
  await dealTransaction(async tx=>{
   await tx.$queryRaw`SELECT "id" FROM "EmployeePayoutPeriod" WHERE "id"=${id} FOR UPDATE`;
   const p=await tx.employeePayoutPeriod.findUniqueOrThrow({where:{id}});

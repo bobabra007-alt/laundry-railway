@@ -4,10 +4,12 @@ import { currentUser,can } from '@/lib/access';
 import { calcDeal,inputNumber } from '@/lib/money';
 import { DEAL_STATUSES, type Status } from '@/lib/deal-status';
 import { dealTransaction,lockDeal,ensureAllocations,reconcileDeal } from '@/lib/deal-ledger';
+import {businessToday,parseCalendarDate} from '@/lib/dates';
+import {requireWritable} from '@/lib/access';
 import { audit } from '@/lib/audit';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-function refresh(id?:string){for(const path of ['/', '/deals','/clients','/payouts','/profile',...(id?[`/deals/${id}`]:[])])revalidatePath(path);}
+function refresh(id?:string){for(const path of ['/','/analytics', '/deals','/clients','/payouts','/profile',...(id?[`/deals/${id}`]:[])])revalidatePath(path);}
 function message(error:unknown){return error instanceof Error?error.message:'Не удалось сохранить изменение';}
 type State={error:string};
 export async function createDeal(_state:State,fd:FormData):Promise<State>{
@@ -16,7 +18,9 @@ export async function createDeal(_state:State,fd:FormData):Promise<State>{
  try {
   const title=String(fd.get('title')??'').trim(),amount=inputNumber(fd.get('amount')),partnerRate=inputNumber(fd.get('partnerRate')),clientRate=inputNumber(fd.get('clientRate'));
   if(!title||title.length>200)throw new Error('Название: от 1 до 200 символов');
+  if([amount,partnerRate,clientRate].some(n=>Math.abs(n*100-Math.round(n*100))>.0001))throw new Error('Используйте не более двух знаков после запятой');
   if(amount<=0||amount>1e12||partnerRate<0||partnerRate>100||clientRate<0||clientRate>100)throw new Error('Сумма должна быть положительной, проценты — от 0 до 100');
+  const dates=dealDates(fd);
   id=await dealTransaction(async tx=>{
    let clientId=String(fd.get('clientId')??''),partnerId=String(fd.get('partnerId')??'')||null;
    if(!clientId){
@@ -36,7 +40,7 @@ export async function createDeal(_state:State,fd:FormData):Promise<State>{
     else {if(!can(u,'partners.manage'))throw new Error('Для нового партнёра требуется право управления партнёрами');const p=await tx.partner.create({data:{name:partnerName}});partnerId=p.id;await tx.auditLog.create({data:{userId:u.id,action:'CREATE',entity:'partner',entityId:p.id}});}
    }
    if(partnerId&&!(await tx.partner.findFirst({where:{id:partnerId,archived:false}})))throw new Error('Партнёр не найден');
-   const d=await tx.deal.create({data:{title,clientId,partnerId,assignedTo:u.id,createdBy:u.id,amount,partnerRate,clientRate,...calcDeal(amount,partnerRate,clientRate),employeeCount:4,allocationVersion:1,status:'NEW'}});
+   const d=await tx.deal.create({data:{...dates,title,clientId,partnerId,assignedTo:u.id,createdBy:u.id,amount,partnerRate,clientRate,...calcDeal(amount,partnerRate,clientRate),employeeCount:4,allocationVersion:1,status:'NEW'}});
    await tx.userPreference.upsert({where:{userId:u.id},update:{lastPartnerRate:partnerRate,lastClientRate:clientRate},create:{userId:u.id,lastPartnerRate:partnerRate,lastClientRate:clientRate}});
    await tx.auditLog.create({data:{userId:u.id,action:'CREATE',entity:'deal',entityId:d.id,payload:{amount,partnerRate,clientRate}}});return d.id;
   });
@@ -46,7 +50,7 @@ export async function createDeal(_state:State,fd:FormData):Promise<State>{
 export async function changeDealStatus(_state:State,fd:FormData):Promise<State>{
  const u=await currentUser(),id=String(fd.get('dealId')),status=String(fd.get('status')) as Status;
  try {
-  if(!(status in DEAL_STATUSES))throw new Error('Неизвестный статус');
+  if(!(Object.hasOwn(DEAL_STATUSES,status)))throw new Error('Неизвестный статус');
   await dealTransaction(async tx=>{
    const d=await lockDeal(tx,id);
    if(d.deletedAt)throw new Error('Сначала восстановите сделку из архива');
@@ -90,8 +94,9 @@ export async function addPayment(_state:State,fd:FormData):Promise<State>{
  const u=await currentUser(),id=String(fd.get('dealId'));
  try {
   const amount=inputNumber(fd.get('amount')),direction=String(fd.get('direction')),date=String(fd.get('paidAt')??'');
-  if(amount<=0||amount>1e12)throw new Error('Введите положительную сумму');
+  if(amount<=0||amount>1e12||Math.abs(amount*100-Math.round(amount*100))>.0001)throw new Error('Введите положительную сумму с точностью до двух знаков после запятой');
   if(!['PARTNER_TO_US','US_TO_CLIENT'].includes(direction))throw new Error('Неизвестный тип платежа');
+  if(date)parseCalendarDate(date);
   const paidAt=date?new Date(`${date}T12:00:00+05:00`):new Date();if(!Number.isFinite(paidAt.getTime()))throw new Error('Некорректная дата');
   await dealTransaction(async tx=>{
    const d=await lockDeal(tx,id);
@@ -102,6 +107,28 @@ export async function addPayment(_state:State,fd:FormData):Promise<State>{
   });refresh(id);return{error:''};
  }catch(error){return{error:message(error)}}
 }
-export async function addComment(fd:FormData){const u=await currentUser();const dealId=String(fd.get('dealId'));const d=await prisma.deal.findUniqueOrThrow({where:{id:dealId}});if(d.deletedAt)throw new Error('Сделка в архиве');await prisma.comment.create({data:{entityType:'DEAL',dealId,authorId:u.id,text:String(fd.get('text'))}});await audit(u.id,'COMMENT','deal',dealId);revalidatePath(`/deals/${dealId}`)}
-export async function editComment(fd:FormData){const u=await currentUser();const c=await prisma.comment.findUniqueOrThrow({where:{id:String(fd.get('commentId'))}});if(c.authorId!==u.id&&u.role!=='SUPER_ADMIN')throw new Error('Нет прав');await prisma.$transaction([prisma.commentRevision.create({data:{commentId:c.id,text:c.text,editedBy:u.id}}),prisma.comment.update({where:{id:c.id},data:{text:String(fd.get('text'))}})]);await audit(u.id,'EDIT_COMMENT','comment',c.id);if(c.dealId)revalidatePath(`/deals/${c.dealId}`)}
-export async function deleteComment(fd:FormData){const u=await currentUser();const c=await prisma.comment.findUniqueOrThrow({where:{id:String(fd.get('commentId'))}});if(c.authorId!==u.id&&u.role!=='SUPER_ADMIN')throw new Error('Нет прав');await prisma.$transaction([prisma.commentRevision.create({data:{commentId:c.id,text:c.text,editedBy:u.id}}),prisma.comment.update({where:{id:c.id},data:{deletedAt:new Date()}})]);await audit(u.id,'DELETE_COMMENT','comment',c.id);if(c.dealId)revalidatePath(`/deals/${c.dealId}`)}
+export async function addComment(fd:FormData){const u=await currentUser();requireWritable(u);const dealId=String(fd.get('dealId'));const d=await prisma.deal.findUniqueOrThrow({where:{id:dealId}});if(d.deletedAt)throw new Error('Сделка в архиве');await prisma.comment.create({data:{entityType:'DEAL',dealId,authorId:u.id,text:String(fd.get('text'))}});await audit(u.id,'COMMENT','deal',dealId);revalidatePath(`/deals/${dealId}`)}
+export async function editComment(fd:FormData){const u=await currentUser();requireWritable(u);const c=await prisma.comment.findUniqueOrThrow({where:{id:String(fd.get('commentId'))}});if(c.authorId!==u.id&&u.role!=='SUPER_ADMIN')throw new Error('Нет прав');await prisma.$transaction([prisma.commentRevision.create({data:{commentId:c.id,text:c.text,editedBy:u.id}}),prisma.comment.update({where:{id:c.id},data:{text:String(fd.get('text'))}})]);await audit(u.id,'EDIT_COMMENT','comment',c.id);if(c.dealId)revalidatePath(`/deals/${c.dealId}`)}
+export async function deleteComment(fd:FormData){const u=await currentUser();requireWritable(u);const c=await prisma.comment.findUniqueOrThrow({where:{id:String(fd.get('commentId'))}});if(c.authorId!==u.id&&u.role!=='SUPER_ADMIN')throw new Error('Нет прав');await prisma.$transaction([prisma.commentRevision.create({data:{commentId:c.id,text:c.text,editedBy:u.id}}),prisma.comment.update({where:{id:c.id},data:{deletedAt:new Date()}})]);await audit(u.id,'DELETE_COMMENT','comment',c.id);if(c.dealId)revalidatePath(`/deals/${c.dealId}`)}
+
+function dealDates(fd:FormData){
+ const dealDate=parseCalendarDate(String(fd.get('dealDate')||businessToday()));
+ const optional=(key:string)=>fd.get(key)?parseCalendarDate(String(fd.get(key))):null;
+ const dueOn=optional('dueOn'),expectedPaymentOn=optional('expectedPaymentOn'),waitingReason=String(fd.get('waitingReason')??'').trim();
+ if(waitingReason.length>1000)throw new Error('Причина ожидания: до 1000 символов');
+ if(dueOn&&dueOn<dealDate)throw new Error('Срок исполнения не может быть раньше даты сделки');
+ if(expectedPaymentOn&&expectedPaymentOn<dealDate)throw new Error('Ожидаемая оплата не может быть раньше даты сделки');
+ return {dealDate,dueOn,expectedPaymentOn,waitingReason:waitingReason||null};
+}
+export async function updateDealDetails(_:State,fd:FormData):Promise<State>{
+ const u=await currentUser(),id=String(fd.get('dealId'));
+ try{const dates=dealDates(fd),title=String(fd.get('title')??'').trim();if(!title||title.length>200)throw new Error('Укажите название до 200 символов');
+ await dealTransaction(async tx=>{
+  const d=await lockDeal(tx,id);
+  if(d.deletedAt)throw new Error('Сделка в архиве');
+  if(!can(u,'deals.edit_any')&&!(d.assignedTo===u.id&&can(u,'deals.edit_own')))throw new Error('Нет права изменять сделку');
+  if(d.updatedAt.toISOString()!==String(fd.get('version')))throw new Error('Сделка уже изменилась. Обновите страницу.');
+  const values={...dates,title};await tx.deal.update({where:{id},data:values});
+  await tx.auditLog.create({data:{userId:u.id,action:'EDIT_DETAILS',entity:'deal',entityId:id,payload:{before:{title:d.title,dealDate:d.dealDate.toISOString(),dueOn:d.dueOn?.toISOString(),expectedPaymentOn:d.expectedPaymentOn?.toISOString(),waitingReason:d.waitingReason},after:{...values,dealDate:dates.dealDate.toISOString(),dueOn:dates.dueOn?.toISOString(),expectedPaymentOn:dates.expectedPaymentOn?.toISOString()}}}});
+ });refresh(id);return {error:''};}catch(e){return {error:message(e)};}
+}
