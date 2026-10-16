@@ -40,9 +40,10 @@ export function baseDealWhere(p:Params){
  ...(p.source||p.tag?{client:{...(p.source?{source:{contains:p.source,mode:'insensitive' as const}}:{}),...(p.tag?{tags:{has:p.tag}}:{})}}:{}),
  ...(min!==undefined||max!==undefined?{amount:{gte:min,lte:max}}:{}),...(profitMin!==undefined||profitMax!==undefined?{fee:{gte:profitMin,lte:profitMax}}:{})};
 }
-export function paymentTotals(d:{partnerAmount:unknown;clientAmount:unknown;payments:{direction:string;amount:unknown}[]}) {
+export function paymentTotals(d:{status?:string;partnerAmount:unknown;clientAmount:unknown;payments:{direction:string;amount:unknown}[]}) {
  const received=d.payments.filter(x=>x.direction==='PARTNER_TO_US').reduce((s,x)=>s+Number(x.amount),0),paid=d.payments.filter(x=>x.direction==='US_TO_CLIENT').reduce((s,x)=>s+Number(x.amount),0);
- return {received,paid,partnerDebt:Math.max(0,Number(d.partnerAmount)-received),clientDebt:Math.max(0,Number(d.clientAmount)-paid)};
+ const settled=d.status==='COMPLETED'||d.status==='CANCELLED';
+ return {received,paid,partnerDebt:settled?0:Math.max(0,Number(d.partnerAmount)-received),clientDebt:settled?0:Math.max(0,Number(d.clientAmount)-paid)};
 }
 export function paymentMatches(d:Parameters<typeof paymentTotals>[0],filter?:string) {const t=paymentTotals(d);return filter==='partner_due'?t.partnerDebt>.005:filter==='client_due'?t.clientDebt>.005:filter==='settled'?t.partnerDebt<.005&&t.clientDebt<.005:true;}
 export function queryLink(path:string,p:Params,changes:Params={}) {const q=new URLSearchParams();for(const [key,value] of Object.entries({...p,...changes}))if(value)q.set(key,value);return path+(q.size?'?'+q.toString():'');}

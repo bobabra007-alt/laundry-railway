@@ -1,4 +1,5 @@
 'use server';
+import {editDeal,changePayment} from '@/lib/deal-edit';
 import { prisma } from '@/lib/db';
 import { currentUser,can } from '@/lib/access';
 import { calcDeal,inputNumber } from '@/lib/money';
@@ -122,13 +123,20 @@ function dealDates(fd:FormData){
 }
 export async function updateDealDetails(_:State,fd:FormData):Promise<State>{
  const u=await currentUser(),id=String(fd.get('dealId'));
- try{const dates=dealDates(fd),title=String(fd.get('title')??'').trim();if(!title||title.length>200)throw new Error('Укажите название до 200 символов');
- await dealTransaction(async tx=>{
-  const d=await lockDeal(tx,id);
-  if(d.deletedAt)throw new Error('Сделка в архиве');
-  if(!can(u,'deals.edit_any')&&!(d.assignedTo===u.id&&can(u,'deals.edit_own')))throw new Error('Нет права изменять сделку');
-  if(d.updatedAt.toISOString()!==String(fd.get('version')))throw new Error('Сделка уже изменилась. Обновите страницу.');
-  const values={...dates,title};await tx.deal.update({where:{id},data:values});
-  await tx.auditLog.create({data:{userId:u.id,action:'EDIT_DETAILS',entity:'deal',entityId:id,payload:{before:{title:d.title,dealDate:d.dealDate.toISOString(),dueOn:d.dueOn?.toISOString(),expectedPaymentOn:d.expectedPaymentOn?.toISOString(),waitingReason:d.waitingReason},after:{...values,dealDate:dates.dealDate.toISOString(),dueOn:dates.dueOn?.toISOString(),expectedPaymentOn:dates.expectedPaymentOn?.toISOString()}}}});
- });refresh(id);return {error:''};}catch(e){return {error:message(e)};}
+ try{
+  if(String(fd.get('partnerName')??'').trim()&&!fd.get('partnerId'))throw new Error('Выберите партнёра из списка или очистите поле.');
+  const input={...dealDates(fd),version:String(fd.get('version')),title:String(fd.get('title')??'').trim(),clientId:String(fd.get('clientId')??''),partnerId:String(fd.get('partnerId')??'')||null,assignedTo:String(fd.get('assignedTo')??''),amount:inputNumber(fd.get('amount')),partnerRate:inputNumber(fd.get('partnerRate')),clientRate:inputNumber(fd.get('clientRate'))};
+  for(const field of ['amount','partnerRate','clientRate'])if(!String(fd.get(field)??'').trim())throw new Error('Заполните сумму и оба процента.');
+  await dealTransaction(tx=>editDeal(tx,u,id,input));refresh(id);return {error:''};
+ }catch(e){return {error:message(e)};}
+}
+export async function updatePayment(_:State,fd:FormData):Promise<State>{
+ const u=await currentUser();
+ try{
+  const remove=fd.get('remove')==='1',date=String(fd.get('paidAt')??'');
+  if(!remove)parseCalendarDate(date);
+  const note=String(fd.get('note')??'').trim();if(note.length>1000)throw new Error('Комментарий: до 1000 символов.');
+  const id=await dealTransaction(tx=>changePayment(tx,u,String(fd.get('paymentId')),{version:String(fd.get('version')),remove,amount:remove?0:inputNumber(fd.get('amount')),direction:String(fd.get('direction')) as 'PARTNER_TO_US'|'US_TO_CLIENT',paidAt:remove?new Date():new Date(`${date}T12:00:00+05:00`),note:note||null}));
+  refresh(id);return {error:''};
+ }catch(e){return {error:message(e)};}
 }

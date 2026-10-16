@@ -1,3 +1,4 @@
+import {ownerAnalytics} from './owner-analytics';
 import {prisma} from './db';
 import {baseDealWhere,periodFor,priorPeriod,inPeriod,paymentMatches,paymentTotals,dateWhere,type Params,type Period} from './filters';
 import {round2} from './money';import {businessToday} from './dates';
@@ -17,9 +18,9 @@ export async function loadReport(p:Params) {
  const period=periodFor(p,'month'),previousPeriod=priorPeriod(period),where=baseDealWhere(p);
  const scoped=!!(p.q||p.owner||p.client||p.partner||p.status||p.payment||p.source||p.tag||p.min||p.max||p.profitMin||p.profitMax);
  const [allDeals,allExpenses,paymentRows,staffRows]=await Promise.all([
-  prisma.deal.findMany({where:{...where,deletedAt:null},include:{client:{select:{name:true}},partner:{select:{name:true}},assignee:{select:{displayName:true}},payments:{select:{direction:true,amount:true}}}}),
+  prisma.deal.findMany({where:{...where,deletedAt:null},include:{client:{select:{name:true}},partner:{select:{name:true}},assignee:{select:{displayName:true}},payments:{where:{deletedAt:null},select:{direction:true,amount:true}}}}),
   prisma.expense.findMany({where:{deletedAt:null,...(p.category?{category:p.category}:{}),...(scoped?{deal:{...where,deletedAt:null}}:{})},select:{id:true,dealId:true,description:true,category:true,amount:true,spentOn:true,authorId:true}}),
-  prisma.dealPayment.findMany({where:{paidAt:dateWhere(period,false),deal:where},select:{dealId:true,direction:true,amount:true}}),
+  prisma.dealPayment.findMany({where:{deletedAt:null,paidAt:dateWhere(period,false),deal:where},select:{dealId:true,direction:true,amount:true}}),
   prisma.employeeLedgerEntry.findMany({where:{createdAt:dateWhere(period,false),...(p.owner?{userId:p.owner}:{})},include:{user:{select:{displayName:true}}}})
  ]);
  const deals=allDeals.filter(d=>paymentMatches(d,p.payment));const ids=new Set(deals.map(d=>d.id));
@@ -27,8 +28,8 @@ export async function loadReport(p:Params) {
  const current=reportMetrics(deals,expenses,period),previous=reportMetrics(deals,expenses,previousPeriod);
  const selectedPayments=p.payment?paymentRows.filter(x=>ids.has(x.dealId)):paymentRows;
  const received=round2(selectedPayments.filter(x=>x.direction==='PARTNER_TO_US').reduce((s,x)=>s+Number(x.amount),0)),paidClients=round2(selectedPayments.filter(x=>x.direction==='US_TO_CLIENT').reduce((s,x)=>s+Number(x.amount),0));
- const staffMap=new Map<string,{name:string;accrued:number;paid:number;periodBalance:number}>();
- for(const row of staffRows){const item=staffMap.get(row.userId)??{name:row.user.displayName,accrued:0,paid:0,periodBalance:0};if(row.kind==='PAYOUT')item.paid-=Number(row.amount);else item.accrued+=Number(row.amount);item.periodBalance+=Number(row.amount);staffMap.set(row.userId,item);}
+ const staffMap=new Map<string,{id:string;name:string;accrued:number;paid:number;periodBalance:number}>();
+ for(const row of staffRows){const item=staffMap.get(row.userId)??{id:row.userId,name:row.user.displayName,accrued:0,paid:0,periodBalance:0};if(row.kind==='PAYOUT')item.paid-=Number(row.amount);else item.accrued+=Number(row.amount);item.periodBalance+=Number(row.amount);staffMap.set(row.userId,item);}
  const staff=[...staffMap.values()].map(s=>({...s,accrued:round2(s.accrued),paid:round2(s.paid),periodBalance:round2(s.periodBalance)}));
  const buckets=new Map<string,{date:string;income:number;expenses:number}>();const monthly=!period||new Date(period.to).getTime()-new Date(period.from).getTime()>90*86400000;
  const bucket=(date:Date,calendar:boolean)=>{const key=(calendar?date.toISOString().slice(0,10):businessToday(date)).slice(0,monthly?7:10);const item=buckets.get(key)??{date:key,income:0,expenses:0};buckets.set(key,item);return item;};
@@ -42,5 +43,5 @@ export async function loadReport(p:Params) {
   return [...groups.values()].map(x=>({...x,turnover:round2(x.turnover),gross:round2(x.gross),cost:round2(x.cost),net:round2(x.gross-x.cost)})).sort((a,b)=>b.net-a.net);
  };
  const categories=new Map<string,number>();for(const e of expenses)if(inPeriod(e.spentOn,period,true))categories.set(e.category,round2((categories.get(e.category)??0)+Number(e.amount)));
- return {period,previousPeriod,current,previous,received,paidClients,staff,series,clients:breakdown('client'),partners:breakdown('partner'),owners:breakdown('assignee'),categories:[...categories].map(([category,amount])=>({category,amount})),scoped};
+ return {ownerDetails:ownerAnalytics(deals,expenses,period),period,previousPeriod,current,previous,received,paidClients,staff,series,clients:breakdown('client'),partners:breakdown('partner'),owners:breakdown('assignee'),categories:[...categories].map(([category,amount])=>({category,amount})),scoped};
 }

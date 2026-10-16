@@ -1,4 +1,5 @@
  'use server';
+import {archiveUser} from '@/lib/user-lifecycle';
 import {assignReservedShares,dealTransaction} from '@/lib/deal-ledger';import bcrypt from 'bcryptjs';import {prisma} from '@/lib/db';import {currentUser} from '@/lib/access';import {PERMISSIONS} from '@/lib/permissions';import {revalidatePath} from 'next/cache';
 export type UserState={error?:string;success?:string};
 function refresh(){for(const p of ['/admin/users','/','/payouts','/analytics'])revalidatePath(p);}
@@ -10,7 +11,7 @@ export async function createUser(_:UserState,fd:FormData):Promise<UserState>{
  if(password.length<16||new TextEncoder().encode(password).length>72)throw new Error('Пароль: не менее 16 символов и не более 72 байт. Используйте случайный уникальный пароль.');
  const passwordHash=await bcrypt.hash(password,12),keys=PERMISSIONS.filter(k=>fd.get(k)==='on'&&(!f.isReadOnly||k.endsWith('.view')||k.endsWith('.view_all')));
  await dealTransaction(async tx=>{
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(471910)`;
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(471910)::text`;
   if(f.participatesInEmployeeBank&&await tx.user.count({where:{isActive:true,participatesInEmployeeBank:true}})>=4)throw new Error('Четыре доли уже назначены. Для наблюдателя выключите участие в доходе.');
   const user=await tx.user.create({data:{username,displayName,passwordHash,...f}});
   if(keys.length)await tx.userPermission.createMany({data:keys.map(key=>({userId:user.id,key,enabled:true}))});
@@ -22,12 +23,29 @@ export async function updatePermissions(_:UserState,fd:FormData):Promise<UserSta
  const admin=await currentUser();if(admin.role!=='SUPER_ADMIN')return {error:'Только администратор'};
  try{const userId=String(fd.get('userId')),f=flags(fd),isActive=fd.get('isActive')==='on',keys=PERMISSIONS.filter(k=>fd.get(k)==='on'&&(!f.isReadOnly||k.endsWith('.view')||k.endsWith('.view_all')));
  await dealTransaction(async tx=>{
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(471910)`;
-  const target=await tx.user.findUniqueOrThrow({where:{id:userId}});if(target.role==='SUPER_ADMIN')throw new Error('Главного администратора изменять нельзя');
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(471910)::text`;
+  const target=await tx.user.findUniqueOrThrow({where:{id:userId}});if(target.deletedAt)throw new Error('Сначала восстановите пользователя из удалённых.');if(target.role==='SUPER_ADMIN')throw new Error('Главного администратора изменять нельзя');
   if(isActive&&f.participatesInEmployeeBank&&await tx.user.count({where:{id:{not:userId},isActive:true,participatesInEmployeeBank:true}})>=4)throw new Error('У банка может быть только четыре участника');
   await tx.userPermission.deleteMany({where:{userId}});if(keys.length)await tx.userPermission.createMany({data:keys.map(key=>({userId,key,enabled:true}))});
   await tx.user.update({where:{id:userId},data:{...f,isActive,sessionVersion:{increment:1}}});
   await tx.auditLog.create({data:{userId:admin.id,action:'UPDATE_PERMISSIONS',entity:'user',entityId:userId,payload:{permissions:keys,isActive,...f}}});
  });await assignReservedShares(admin.id);refresh();return {success:'Права сохранены. Прежние сеансы пользователя завершены.'};
  }catch(e){return {error:e instanceof Error?e.message:'Не удалось сохранить права'};}
+}
+
+export async function deleteUser(_:UserState,fd:FormData):Promise<UserState>{
+ const admin=await currentUser();
+ try{await dealTransaction(tx=>archiveUser(tx,admin.id,String(fd.get('userId'))));refresh();return {success:'Пользователь удалён из активной команды. История и остаток сохранены.'};}
+ catch(e){return {error:e instanceof Error?e.message:'Не удалось удалить пользователя'};}
+}
+export async function restoreUser(_:UserState,fd:FormData):Promise<UserState>{
+ const admin=await currentUser();if(admin.role!=='SUPER_ADMIN')return {error:'Только администратор'};
+ try{await dealTransaction(async tx=>{
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(471910)::text`;
+  const userId=String(fd.get('userId')),target=await tx.user.findUniqueOrThrow({where:{id:userId}});
+  if(!target.deletedAt)return;
+  await tx.user.update({where:{id:userId},data:{deletedAt:null,isActive:false,participatesInEmployeeBank:false,sessionVersion:{increment:1}}});
+  await tx.auditLog.create({data:{userId:admin.id,action:'RESTORE_USER',entity:'user',entityId:userId}});
+ });refresh();return {success:'Пользователь восстановлен неактивным. Проверьте права и включите «Активен».'};
+ }catch(e){return {error:e instanceof Error?e.message:'Не удалось восстановить пользователя'};}
 }

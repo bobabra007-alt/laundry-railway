@@ -8,7 +8,7 @@ export async function currentUser() {
   const id = (session?.user as any)?.id as string | undefined;
   if (!id) redirect('/login');
   const user = await prisma.user.findUnique({ where: { id }, include: { permissions: true } });
-  if (!user?.isActive || ((session?.user as any)?.version ?? 0) !== user.sessionVersion) redirect('/login');
+  if (!user?.isActive || user.deletedAt || ((session?.user as any)?.version ?? 0) !== user.sessionVersion) redirect('/login');
   return user;
 }
 export function can(user: Awaited<ReturnType<typeof currentUser>>, key: string) {

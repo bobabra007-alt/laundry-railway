@@ -58,6 +58,7 @@ model User {
   passwordHash String
   role         UserRole @default(USER)
   isActive     Boolean  @default(true)
+  deletedAt    DateTime?
   isReadOnly Boolean @default(false)
   sessionVersion Int @default(0)
   participatesInEmployeeBank Boolean @default(true)
@@ -76,6 +77,7 @@ model User {
   audits      AuditLog[]
   employeeLedger EmployeeLedgerEntry[]
   payoutPeriods EmployeePayoutPeriod[]
+  payoutReceipts EmployeePayoutReceipt[]
   allocations DealAllocation[]
   regulations Regulation[]
   expenses Expense[]
@@ -187,6 +189,8 @@ model Deal {
 
 model DealPayment {
   id String @id @default(cuid())
+  deletedAt DateTime?
+  updatedAt DateTime @updatedAt @default(now())
   dealId String
   direction PaymentDirection
   amount Decimal @db.Decimal(18,2)
@@ -369,4 +373,18 @@ model LoginAttempt {
   key String @id
   windowStart DateTime @default(now())
   attempts Int @default(0)
+}
+
+// New receipts never rewrite legacy period confirmations or old ledger entries.
+model EmployeePayoutReceipt {
+  id String @id @default(cuid())
+  requestId String @unique
+  userId String
+  amount Decimal @db.Decimal(18,2)
+  receivedOn DateTime @db.Date
+  balanceAfter Decimal @db.Decimal(18,2)
+  note String?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id])
+  @@index([userId, receivedOn])
 }
