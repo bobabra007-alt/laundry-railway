@@ -105,5 +105,26 @@ test('upgrade and financial workflows on isolated PostgreSQL',async t=>{
    assert.equal(await prisma.dealPayment.count({where:{dealId:'deal',deletedAt:null}}),0);assert.equal(await prisma.dealPayment.count({where:{dealId:'deal'}}),1);assert.equal(await balance(),before);
    assert.equal(await prisma.auditLog.count({where:{entityId:'deal',action:{in:['EDIT_PAYMENT','DELETE_PAYMENT']}}}),2);
   });
+
+ await t.test('workspace draft, promotion, replay protection and permissions',async()=>{
+   await db.exec(await readFile('prisma/migrations/20261102090000_workspace/migration.sql','utf8'));
+   const {storeSheetRow}=await import('../../src/lib/workspace-store');
+   const row={key:'workspace-fixture',version:0,dealId:'',dealVersion:'',values:{title:'Fixture',client:'Client',partner:'Без партнёра',status:'Завершена',material:'00000',transactionDate:'2026-10-01',dealDate:'2026-10-01',amount:'100',partnerRate:'90',clientRate:''}};
+   const count=await prisma.deal.count();
+   const draft=await transaction(tx=>storeSheetRow(tx,admin,row));
+   assert.equal(draft.dealId,'');assert.equal(await prisma.deal.count(),count);
+   row.version=draft.version;row.values.clientRate='0';
+   const saved=await transaction(tx=>storeSheetRow(tx,admin,row));
+   assert.ok(saved.dealId);assert.equal(await prisma.deal.count(),count+1);
+   const published=await prisma.deal.findUniqueOrThrow({where:{id:saved.dealId}});
+   assert.equal(Number(published.fee),90);assert.equal(published.posted,true);
+   await assert.rejects(transaction(tx=>storeSheetRow(tx,admin,row)),/изменена/);
+   const editRow={...row,...saved,values:{...row.values,amount:'200'}};
+   await assert.rejects(transaction(tx=>storeSheetRow(tx,{...admin,id:'member'},editRow)),/ссылка|недоступна|изменена/);
+   await transaction(tx=>storeSheetRow(tx,admin,editRow));
+   assert.equal(await prisma.deal.count(),count+1);
+   assert.equal(Number((await prisma.deal.findUniqueOrThrow({where:{id:saved.dealId}})).fee),180);
+   await assert.rejects(transaction(tx=>storeSheetRow(tx,{id:'guest',role:'USER',isReadOnly:true,permissions:[]},{...row,key:'another',version:0})),/прав/);
+ });
  }finally{await prisma.$disconnect();await server.stop();await db.close();}
 });

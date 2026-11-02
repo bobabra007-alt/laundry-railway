@@ -11,7 +11,11 @@ export function reportMetrics(deals:ReportDeal[],expenses:ReportExpense[],period
  const company=round2(closed.reduce((s,d)=>s+Number(d.companyShare),0)-spend.reduce((s,e)=>s+round2(Number(e.amount)*.75),0));
  const team=round2(closed.reduce((s,d)=>s+Number(d.employeesShare),0)-spend.reduce((s,e)=>s+round2(Number(e.amount)-round2(Number(e.amount)*.75)),0));
  const partnerDebt=round2(opened.filter(d=>d.status!=='CANCELLED').reduce((s,d)=>s+paymentTotals(d).partnerDebt,0)),clientDebt=round2(opened.filter(d=>d.status!=='CANCELLED').reduce((s,d)=>s+paymentTotals(d).clientDebt,0));
- return {turnover,count:opened.length,completed:closed.length,gross,cost,net:round2(gross-cost),company,team,average:opened.length?round2(turnover/opened.length):0,partnerDebt,clientDebt};
+ const closedTurnover=closed.reduce((sum,d)=>sum+Number(d.amount),0);
+ const averageFee=closed.length?round2(gross/closed.length):null;
+ const grossMargin=closedTurnover>0?round2(100*gross/closedTurnover):null;
+ const expenseShare=gross>0?round2(100*cost/gross):null;
+ return {averageFee,grossMargin,expenseShare,turnover,count:opened.length,completed:closed.length,gross,cost,net:round2(gross-cost),company,team,average:opened.length?round2(turnover/opened.length):0,partnerDebt,clientDebt};
 }
 export function percentageChange(current:number,previous:number){return previous===0?null:round2((current-previous)/Math.abs(previous)*100);}
 export async function loadReport(p:Params) {

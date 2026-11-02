@@ -18,3 +18,25 @@ h1,h2,h3{margin:0}.picker{position:relative}.picker-results{position:absolute;to
 .payouts-page .card,.payouts-page .sub,.owner-card{overflow-wrap:anywhere}.payout-form .btn{white-space:normal}.payout-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
 .owner-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.owner-stats>div{background:#f3f8f5;border-radius:10px;padding:12px;display:grid;gap:7px}.owner-stats .sub{font-size:11px}.owner-stats b{font-size:18px;overflow-wrap:anywhere}
 @media(max-width:700px){.payout-metrics{grid-template-columns:1fr}.payout-team-grid,.payout-history,.owner-grid{grid-template-columns:1fr}.payouts-page .metric{min-height:110px}.payouts-page .metric .kpi{font-size:28px}.payouts-page .field input{width:100%;min-width:0;box-sizing:border-box}.payout-form>.btn{width:100%;min-height:48px}.payouts-page .top{display:grid}.payouts-page .card{padding:18px}.payouts-page .row{gap:8px}.payouts-page .sub{font-size:13px;line-height:1.6}}
+
+.work-table .cell-value{font:inherit;text-align:left;color:inherit;background:none;border:1px solid transparent;border-radius:5px;min-height:32px;min-width:48px}
+.work-table .cell-value:hover,.work-table .cell-value:focus-visible{border-color:var(--p);background:#eff9f5}
+.work-table .cell-edit{display:grid;gap:5px;min-width:130px}
+.work-table .cell-edit input,.work-table .cell-edit select{max-width:210px;font:inherit}
+.work-table .table-scroll{max-height:70vh;overflow:auto}
+.work-table .table-scroll th{position:sticky;top:0;z-index:1}
+.work-table .quick-links input[type=file]{max-width:160px;font-size:12px}
+@media(max-width:560px){.work-table .cell-value{min-height:44px}.work-table .table-scroll{max-height:65dvh}}
+
+.overview-counts>div{display:flex;align-items:center;justify-content:space-between;gap:22px}
+.overview-counts b{font-size:32px}
+.overview-period .chip{min-height:44px}
+.report-ratios{grid-template-columns:repeat(3,minmax(0,1fr))}
+.report-chart-card{grid-template-columns:minmax(0,1fr)}
+.report-chart{min-width:0;width:100%;max-width:100%}
+.report-chart .bar-chart{width:100%;min-width:0;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
+@media(max-width:560px){
+ .overview-counts{display:grid;grid-template-columns:minmax(0,1fr);align-self:stretch}
+ .overview-counts>div{gap:12px}
+ .report-ratios{grid-template-columns:minmax(0,1fr)}
+}

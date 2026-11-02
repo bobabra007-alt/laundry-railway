@@ -52,6 +52,8 @@ enum PayoutStatus {
 }
 
 model User {
+  workspaceFields WorkspaceField[]
+  workspaceRows WorkspaceRow[]
   id           String   @id @default(cuid())
   username     String   @unique
   displayName  String
@@ -141,6 +143,7 @@ model Partner {
 }
 
 model Deal {
+  workspaceRows WorkspaceRow[]
   id String @id @default(cuid())
   title String
   clientId String
@@ -387,4 +390,28 @@ model EmployeePayoutReceipt {
   createdAt DateTime @default(now())
   user User @relation(fields: [userId], references: [id])
   @@index([userId, receivedOn])
+}
+
+model WorkspaceField {
+  id       String @id @default(cuid())
+  ownerId  String
+  name     String
+  kind     String
+  required Boolean @default(true)
+  shared   Boolean @default(false)
+  owner    User @relation(fields: [ownerId], references: [id])
+  @@unique([ownerId,name])
+}
+
+model WorkspaceRow {
+  ownerId String
+  key String
+  dealId String?
+  values Json
+  version Int @default(1)
+  owner User @relation(fields: [ownerId], references: [id])
+  deal Deal? @relation(fields: [dealId], references: [id])
+  @@id([ownerId,key])
+  @@unique([ownerId,dealId])
+  @@index([dealId])
 }

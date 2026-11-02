@@ -19,3 +19,11 @@ test('CSV protects formula text and retains quoted names',()=>{assert.equal(csvC
 test('drill-down links retain periods and safely encode contact names',()=>{const link=queryLink('/deals',{period:'custom',from:'2026-10-01',to:'2026-10-03',q:'a & b'},{status:'COMPLETED',dateBasis:'closed'});assert.match(link,/q=a\+%26\+b/);assert.match(link,/dateBasis=closed/);assert.match(link,/from=2026-10-01/);});
 import {payoutWindow} from '../src/lib/payouts';
 test('payout windows switch at Yekaterinburg midnight and include the 15th once',()=>{const first=payoutWindow(new Date('2026-10-15T18:59:59Z'));assert.equal(first.start.toISOString(),'2026-09-30T19:00:00.000Z');assert.equal(first.end.toISOString(),'2026-10-15T18:59:59.999Z');assert.equal(first.due.toISOString(),'2026-10-15T07:00:00.000Z');const second=payoutWindow(new Date('2026-10-15T19:00:00Z'));assert.equal(second.start.toISOString(),'2026-10-15T19:00:00.000Z');assert.equal(second.end.toISOString(),'2026-10-31T18:59:59.999Z');assert.equal(second.due.toISOString(),'2026-10-31T07:00:00.000Z');});
+
+test('period profitability uses the same closed deals in both sides of margin; empty periods have no ratios',()=>{
+ const period={from:'2026-10-01',to:'2026-10-03'};
+ const m=reportMetrics([deal(),deal({status:'IN_PROGRESS',closedAt:null,dealDate:new Date('2026-10-02')})],[expense()],period);
+ assert.equal(m.averageFee,500);assert.equal(m.grossMargin,5);assert.equal(m.expenseShare,20);
+ const empty=reportMetrics([],[],period);
+ assert.equal(empty.averageFee,null);assert.equal(empty.grossMargin,null);assert.equal(empty.expenseShare,null);
+});

@@ -34,7 +34,9 @@ export function baseDealWhere(p:Params){
  const q=(p.q??'').trim().slice(0,200),min=numberFilter(p.min),max=numberFilter(p.max),profitMin=numberFilter(p.profitMin),profitMax=numberFilter(p.profitMax);
  if(min!==undefined&&max!==undefined&&min>max)throw new Error('Минимальная сумма больше максимальной');
  if(profitMin!==undefined&&profitMax!==undefined&&profitMin>profitMax)throw new Error('Минимальная прибыль больше максимальной');
- return { ...(p.status&&Object.hasOwn(DEAL_STATUSES,p.status)?{status:p.status as keyof typeof DEAL_STATUSES}:{}),
+ return { ...(p.openOnly==='1'||p.latePayment==='1'?{status:{notIn:['COMPLETED','CANCELLED'] as ('COMPLETED'|'CANCELLED')[]}}:{}),
+ ...(p.latePayment==='1'?{expectedPaymentOn:{lt:parseCalendarDate(businessToday())}}:{}),
+ ...(p.status&&Object.hasOwn(DEAL_STATUSES,p.status)?{status:p.status as keyof typeof DEAL_STATUSES}:{}),
  ...(p.owner?{assignedTo:p.owner}:{}),...(p.client?{clientId:p.client}:{}),...(p.partner?{partnerId:p.partner}:{}),
  ...(q?{OR:[{title:{contains:q,mode:'insensitive' as const}},{client:{name:{contains:q,mode:'insensitive' as const}}},{partner:{name:{contains:q,mode:'insensitive' as const}}}]}:{}),
  ...(p.source||p.tag?{client:{...(p.source?{source:{contains:p.source,mode:'insensitive' as const}}:{}),...(p.tag?{tags:{has:p.tag}}:{})}}:{}),
